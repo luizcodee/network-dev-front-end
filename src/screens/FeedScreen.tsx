@@ -22,7 +22,12 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import * as ImagePicker from "expo-image-picker";
 
-import { api } from "../services/api";
+import {
+  getPosts,
+  createPost,
+  createPostWithImage,
+  toggleLike,
+} from "../services/postService";
 
 import { getStoredUserId } from "../services/auth";
 
@@ -30,34 +35,34 @@ import { useResponsive } from "../utils/responsive";
 
 const MOCK_PHOTOS = [
   {
-    id: "1",
-    user: "Joice Barbosa",
-    role: "React Native Developer",
+    id: "7",
+    user: "luiz",
+    role: "Java",
     avatar: "https://i.pravatar.cc/150?img=32",
     url: "https://picsum.photos/id/1/800/800",
-    description: "Finalizando a Home responsiva 🚀",
+    description: "Head de Tecnologia Senior",
     likes: 24,
     liked: false,
   },
 
   {
-    id: "2",
-    user: "Carlos Lima",
-    role: "Backend Java",
+    id: "8",
+    user: "Joice",
+    role: "Java",
     avatar: "https://i.pravatar.cc/150?img=12",
     url: "https://picsum.photos/id/20/800/800",
-    description: "Deploy concluído com sucesso 🔥",
+    description: "PO de Tecnologia Senior",
     likes: 17,
     liked: false,
   },
 
   {
-    id: "3",
-    user: "Marina Souza",
-    role: "UI/UX Designer",
-    avatar: "https://i.pravatar.cc/150?img=45",
+    id: "9",
+    user: "Adriel",
+    role: "Java",
+    avatar: "https://firebasestorage.googleapis.com/v0/b/dev-net-24be1.firebasestorage.app/o/posts%2Fa4799aa6-fe1b-4afd-9e27-30ffd2d14e82-IMG_3529.HEIC?alt=media",
     url: "https://picsum.photos/id/30/800/800",
-    description: "Novo protótipo no Figma ✨",
+    description: "Front end de Tecnologia",
     likes: 42,
     liked: false,
   },
@@ -92,18 +97,81 @@ export default function FeedScreen({ navigation }: any) {
     [key: string]: Animated.Value;
   }>({}).current;
 
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [userId, setUserId] = useState<number | null>(null);
+
+  const normalizePost = (p: any) => {
+    console.log("Normalizando post recebido:", p);
+    const id = p?.id != null ? String(p.id) : p?._id != null ? String(p._id) : String(Math.random());
+    // O Spring Boot salva e retorna como imageUrl. Garantimos o fallback caso venha vazio.
+    const rawUrl = p?.imageUrl ?? p?.url ?? null;
+    const url = rawUrl ? String(rawUrl) : null;
+
+    return {
+      ...p,
+      id,
+      url, // O componente <Image> usará essa propriedade resolvida
+      likes: p?.likes ?? 0,
+      liked: p?.liked ?? false,
+      user: p?.user ?? `Usuário ${p?.userId ?? ""}`,
+      avatar: p?.avatar ?? "https://i.pravatar.cc/150?img=32",
+    };
+  };
+
   useEffect(() => {
-    initializePosts();
+    loadInitialPosts();
   }, []);
 
-  const initializePosts = () => {
-    const preparedPosts = MOCK_PHOTOS.map((post) => {
-      likeAnimations[post.id] = new Animated.Value(1);
+  const loadInitialPosts = async () => {
+    setLoading(true);
+    try {
+      const storedId = await getStoredUserId();
+      setUserId(storedId ? Number(storedId) : null);
 
-      return post;
-    });
+      const response = await getPosts(0, 10);
+      const items = response?.content || [];
+      const normalized = items.map(normalizePost);
 
-    setPosts(preparedPosts);
+      normalized.forEach((item: any) => {
+        likeAnimations[item.id] = new Animated.Value(1);
+      });
+
+      setPosts(normalized);
+      setPage(0);
+      setHasMore(normalized.length === 10 && (response.totalPages == null || response.totalPages > 1));
+    } catch (error) {
+      console.log("Erro ao carregar feed", error);
+      // Use real API only — don't fall back to mocks in production.
+      setPosts([]);
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMorePosts = async () => {
+    if (!hasMore || loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const response = await getPosts(nextPage, 10);
+      const items = response?.content || [];
+      const normalized = items.map(normalizePost);
+
+      normalized.forEach((item: any) => {
+        likeAnimations[item.id] = new Animated.Value(1);
+      });
+
+      setPosts((prev) => [...prev, ...normalized]);
+      setPage(nextPage);
+      setHasMore(normalized.length === 10 && (response.totalPages == null || response.totalPages > nextPage));
+    } catch (error) {
+      console.log("Erro ao carregar mais posts", error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   // Define o tamanho da imagem para ser 1/3 da tela (grid)
@@ -159,101 +227,82 @@ export default function FeedScreen({ navigation }: any) {
       return;
     }
 
-    const newPost = {
-      id: Date.now().toString(),
+    setLoading(true);
+    try {
+      const storedId = await getStoredUserId();
+      if (!storedId) {
+        Alert.alert("Erro", "Usuário não encontrado.");
+        return;
+      }
 
-      user: "Joice Barbosa",
+      const userNumber = Number(storedId);
 
-      role: "React Native Developer",
+      const createdPost = newImage
+        ? await createPostWithImage(userNumber, postText, newImage)
+        : await createPost(userNumber, postText);
 
-      avatar:
-        "https://i.pravatar.cc/150?img=32",
+      const preparedPost = normalizePost({
+        ...createdPost,
+        role: "Desenvolvedor",
+      });
 
-      url:
-        newImage ||
-        "https://picsum.photos/800/800",
+      // provide sane defaults
+      preparedPost.role = preparedPost.role ?? "Desenvolvedor";
+      preparedPost.likes = preparedPost.likes ?? 0;
+      preparedPost.liked = preparedPost.liked ?? false;
 
-      description: postText,
-
-      likes: 0,
-
-      liked: false,
-    };
-
-    likeAnimations[newPost.id] =
-      new Animated.Value(1);
-
-    setPosts((prev) => [newPost, ...prev]);
-
-    setPostText("");
-
-    setNewImage(null);
-
-    setCreatePostVisible(false);
+      likeAnimations[preparedPost.id] = new Animated.Value(1);
+      setPosts((prev) => [preparedPost, ...prev]);
+      setPostText("");
+      setNewImage(null);
+      setCreatePostVisible(false);
+    } catch (error) {
+      console.log("Erro ao criar post", error);
+      Alert.alert("Erro", "Não foi possível publicar.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleLike = (id: string) => {
+  const handleLike = async (id: string | number) => {
+    const key = String(id);
+
     Animated.sequence([
-      Animated.timing(likeAnimations[id], {
+      Animated.timing(likeAnimations[key], {
         toValue: 1.3,
-
         duration: 120,
-
         useNativeDriver: true,
       }),
-
-      Animated.timing(likeAnimations[id], {
+      Animated.timing(likeAnimations[key], {
         toValue: 1,
-
         duration: 120,
-
         useNativeDriver: true,
       }),
     ]).start();
 
     setPosts((prev) =>
       prev.map((post) =>
-        post.id === id
+        post.id === key
           ? {
               ...post,
-
               liked: !post.liked,
-
-              likes: post.liked
-                ? post.likes - 1
-                : post.likes + 1,
+              likes: post.liked ? post.likes - 1 : post.likes + 1,
             }
           : post
       )
     );
+
+    if (!userId) return;
+
+    try {
+      await toggleLike(Number(key), userId);
+    } catch (error) {
+      console.log("Erro ao persistir like", error);
+    }
   };
 
   const handleInfiniteScroll = () => {
-    if (loadingMore) return;
-
-    setLoadingMore(true);
-
-    setTimeout(() => {
-      const morePosts = MOCK_PHOTOS.map(
-        (post, index) => ({
-          ...post,
-
-          id: `${post.id}-${Date.now()}-${index}`,
-        })
-      );
-
-      morePosts.forEach((post) => {
-        likeAnimations[post.id] =
-          new Animated.Value(1);
-      });
-
-      setPosts((prev) => [
-        ...prev,
-        ...morePosts,
-      ]);
-
-      setLoadingMore(false);
-    }, 1500);
+    loadMorePosts();
   };
 
   const handleDelete = async () => {
@@ -359,7 +408,7 @@ export default function FeedScreen({ navigation }: any) {
         ) : (
           <FlatList
             data={posts}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id?.toString() || String(item.id)}
             numColumns={numColumns}
             key={numColumns}
             showsVerticalScrollIndicator={false}
@@ -377,9 +426,7 @@ export default function FeedScreen({ navigation }: any) {
                   }
                 : undefined
             }
-            onEndReached={
-              handleInfiniteScroll
-            }
+            onEndReached={loadMorePosts}
             onEndReachedThreshold={0.4}
             ListFooterComponent={
               loadingMore ? (

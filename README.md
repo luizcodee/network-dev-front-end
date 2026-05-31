@@ -336,3 +336,48 @@ Próximas implementações:
 # 📄 Licença
 
 Projeto desenvolvido para fins acadêmicos e educacionais.
+
+---
+
+## 🔗 Apontar o app para o Backend Java (Spring Boot)
+
+O app já está preparado para apontar ao backend via variável de ambiente `API_URL`. Por padrão ele utiliza `http://10.173.27.34:8080/api` no celular e `http://localhost:8080/api` no web.
+
+Opções para configurar o endpoint do backend:
+
+1. Usar variável de ambiente (recomendado):
+
+   - No Windows (PowerShell):
+
+     ```powershell
+     setx API_URL "http://192.168.0.42:8080/api"
+     # feche e reabra o terminal / VS Code e reinicie o Expo
+     ```
+
+   - No macOS / Linux:
+
+     ```bash
+     export API_URL="http://192.168.0.42:8080/api"
+     ```
+
+2. Editar o arquivo `src/services/api.ts` e alterar o `defaultMobile` para o IP/host do seu backend (apenas para desenvolvimento local).
+
+3. Usar `npx expo start --tunnel` se você preferir evitar exposição direta por IP.
+
+Testes rápidos (no computador):
+
+```bash
+# Verificar usuário 1
+curl http://192.168.0.42:8080/api/users/1
+
+# Verificar posts (feed)
+curl http://192.168.0.42:8080/api/posts
+
+# Fazer upload de imagem (multipart)
+curl -F "file=@./avatar.jpg" -X POST http://192.168.0.42:8080/api/users/1/upload-profile-image
+```
+
+Observações:
+
+- Os campos que o mobile consome são `profileImageUrl` no usuário e `imageUrl` nos posts — o backend já os fornece.
+- Não alterei o layout nem as telas do app — apenas tornei o `baseURL` configurável.
