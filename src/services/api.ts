@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
 
 const baseURL = Platform.OS === 'web'
   ? 'http://localhost:8080/api'
-  : 'http://10.109.64.34:8080/api'; // ← troque pelo seu IP (ipconfig → IPv4)
+  : 'http://192.168.1.4:8080/api'; // ← troque pelo seu IP (ipconfig → IPv4)
 
 export const api = axios.create({
   baseURL,
